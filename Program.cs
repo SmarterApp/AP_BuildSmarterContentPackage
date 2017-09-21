@@ -144,6 +144,13 @@ Access Token
 
                     // Build the package
                     builder.ProducePackage(s_packageFilename);
+
+                    Console.WriteLine();
+                    Console.WriteLine("Package Build Complete.");
+                    Console.WriteLine($"Items:     {builder.ItemCount}");
+                    Console.WriteLine($"WordLists: {builder.WitCount}");
+                    Console.WriteLine($"Stimuli:   {builder.StimCount}");
+                    Console.WriteLine($"Tutorials: {builder.TutorialCount}");
                 }
             }
             catch (Exception err)

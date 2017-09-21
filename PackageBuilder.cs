@@ -13,6 +13,12 @@ namespace BuildSmarterContentPackage
         GitLab m_gitLab;
         ZipArchive m_zipArchive;
 
+        // Progress counters
+        int m_itemCount;
+        int m_stimCount;
+        int m_witCount;
+        int m_tutorialCount;
+
         public string ItemBankUrl { get; set; }
 
         public string ItemBankAccessToken { get; set; }
@@ -20,6 +26,11 @@ namespace BuildSmarterContentPackage
         public string ItemBankNamespace { get; set; }
 
         public bool IncludeTutorials { get; set; }
+
+        public int ItemCount { get { return m_itemCount; } }
+        public int StimCount { get { return m_stimCount; } }
+        public int WitCount { get { return m_witCount; } }
+        public int TutorialCount { get { return m_tutorialCount; } }
 
         public bool AddId(ItemId id)
         {
@@ -33,6 +44,11 @@ namespace BuildSmarterContentPackage
 
         public void ProducePackage(string packageFilename)
         {
+            m_itemCount = m_itemQueue.Count;
+            m_stimCount = 0;
+            m_witCount = 0;
+            m_tutorialCount = 0;
+
             using (m_zipArchive = ZipFile.Open(packageFilename, ZipArchiveMode.Create))
             {
                 using (m_gitLab = new GitLab(ItemBankUrl, ItemBankAccessToken))
@@ -40,6 +56,7 @@ namespace BuildSmarterContentPackage
                     while (m_itemQueue.Count > 0)
                     {
                         PackageItem(m_itemQueue.Dequeue());
+                        Console.WriteLine($"Completed {m_itemQueue.CountDequeued} of {m_itemQueue.CountDistinct} items.");
                     }
                 }
 
