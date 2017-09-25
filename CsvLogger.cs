@@ -37,7 +37,10 @@ namespace BuildSmarterContentPackage
                 m_trace.WriteLine(msg);
             }
             ++m_messageCount;
-            ++m_errorCount;
+            if (severity > Severity.Message)
+            {
+                ++m_errorCount;
+            }
         }
 
         public int MessageCount

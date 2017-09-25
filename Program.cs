@@ -151,6 +151,7 @@ Access Token
                     Console.WriteLine($"WordLists: {builder.WitCount}");
                     Console.WriteLine($"Stimuli:   {builder.StimCount}");
                     Console.WriteLine($"Tutorials: {builder.TutorialCount}");
+                    Console.WriteLine($"Errors:    {ProgressLog.ErrorCount}");
                 }
             }
             catch (Exception err)
