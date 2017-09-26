@@ -18,6 +18,7 @@ namespace BuildSmarterContentPackage
         int m_stimCount;
         int m_witCount;
         int m_tutorialCount;
+        uint m_elapsed;
 
         public string ItemBankUrl { get; set; }
 
@@ -27,6 +28,10 @@ namespace BuildSmarterContentPackage
 
         public bool IncludeTutorials { get; set; }
 
+        /// <summary>
+        /// Elapsed time in milliseconds
+        /// </summary>
+        public uint Elapsed { get { return m_elapsed; } }
         public int ItemCount { get { return m_itemCount; } }
         public int StimCount { get { return m_stimCount; } }
         public int WitCount { get { return m_witCount; } }
@@ -44,10 +49,11 @@ namespace BuildSmarterContentPackage
 
         public void ProducePackage(string packageFilename)
         {
-            m_itemCount = m_itemQueue.Count;
+            m_itemCount = 0;
             m_stimCount = 0;
             m_witCount = 0;
             m_tutorialCount = 0;
+            int startTicks = Environment.TickCount;
 
             using (m_zipArchive = ZipFile.Open(packageFilename, ZipArchiveMode.Create))
             {
@@ -56,12 +62,15 @@ namespace BuildSmarterContentPackage
                     while (m_itemQueue.Count > 0)
                     {
                         PackageItem(m_itemQueue.Dequeue());
-                        Console.WriteLine($"Completed {m_itemQueue.CountDequeued} of {m_itemQueue.CountDistinct} items.");
+                        Console.WriteLine($"Completed: {m_itemQueue.CountDequeued} of {m_itemQueue.CountDistinct} items. Elapsed: {TickFormatter.AsElapsed(unchecked((uint)Environment.TickCount - (uint)startTicks))}");
                     }
                 }
 
                 // Add manifest
+                AddManifest();
             }
+
+            m_elapsed = unchecked((uint)Environment.TickCount - (uint)startTicks);
         }
 
         void PackageItem(ItemId itemId)
@@ -101,8 +110,17 @@ namespace BuildSmarterContentPackage
                     }
                 }
 
+                int witsAdded = 0;
+                int stimsAdded = 0;
+                int tutorialsAdded = 0;
+
                 // If an item xml stream was found, parse and include any dependencies
-                if (itemXmlStream != null)
+                if (itemXmlStream == null)
+                {
+                    Program.ProgressLog.Log(Severity.Severe, itemId.ToString(), "Item has no content file.", itemXmlName);
+                    Console.WriteLine("   No item content file found.");
+                }
+                else
                 {
                     try
                     {
@@ -113,6 +131,26 @@ namespace BuildSmarterContentPackage
                         {
                             // Look up the bankKey
                             int bankKey = int.Parse(itemEle.Attribute("bankkey").Value);
+
+                            // Get the item type
+                            var attEle = itemEle.Attribute("format");
+                            if (attEle == null)
+                            {
+                                attEle = itemEle.Attribute("type");
+                            }
+                            string type = (attEle != null) ? attEle.Value : string.Empty;
+                            if (type.Equals("tut", StringComparison.OrdinalIgnoreCase))
+                            {
+                                ++m_tutorialCount;
+                            }
+                            else if (type.Equals("wordList", StringComparison.OrdinalIgnoreCase))
+                            {
+                                ++m_witCount;
+                            }
+                            else
+                            {
+                                ++m_itemCount;
+                            }
 
                             // Find any wordlist references
                             XElement resourceList = itemEle.Element("resourceslist");
@@ -128,10 +166,10 @@ namespace BuildSmarterContentPackage
                                     var witId = new ItemId(ItemClass.Item,
                                         int.Parse(resource.Attribute("bankkey").Value),
                                         int.Parse(resource.Attribute("id").Value));
-                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Item depends on WordList", $"witid='{witId}'");
+                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Item depends on WordList", witId.ToString());
                                     if (AddId(witId))
                                     {
-                                        ++m_witCount;
+                                        ++witsAdded;
                                     }
                                 }
                             }
@@ -150,10 +188,10 @@ namespace BuildSmarterContentPackage
                                     var stimId = new ItemId(ItemClass.Stim,
                                         bankKey,
                                         int.Parse(attrib.Element("val").Value));
-                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Item depends on stimulus", $"stimId='{stimId}'");
+                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Item depends on stimulus", stimId.ToString());
                                     if (AddId(stimId))
                                     {
-                                        ++m_stimCount;
+                                        ++stimsAdded;
                                     }
                                 }
                             }
@@ -167,10 +205,10 @@ namespace BuildSmarterContentPackage
                                     var tutId = new ItemId(ItemClass.Item,
                                         int.Parse(tutorial.Attribute("bankkey").Value),
                                         int.Parse(tutorial.Attribute("id").Value));
-                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Item depends on tutorial", $"tutorialId='{tutId}'");
+                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Item depends on tutorial", tutId.ToString());
                                     if (AddId(tutId))
                                     {
-                                        ++m_tutorialCount;
+                                        ++tutorialsAdded;
                                     }
 
                                 }
@@ -178,16 +216,31 @@ namespace BuildSmarterContentPackage
 
 
                         }
+                        else
+                        {
+                            itemEle = xml.Element("passage");
+                            if (itemEle != null)
+                            {
+                                ++m_stimCount;
+                            }
+                        }
                     }
                     catch (Exception err)
                     {
                         throw new ApplicationException("Expected content missing from item xml.", err);
                     }
                 }
+
+                var sb = new System.Text.StringBuilder("  ");
+                if (witsAdded > 0) sb.Append($" +{witsAdded} WIT");
+                if (stimsAdded > 0) sb.Append($" +{stimsAdded} Stimulus");
+                if (tutorialsAdded > 0) sb.Append($" +{tutorialsAdded} Tutorial");
+                if (sb.Length > 2) Console.WriteLine(sb);
             }
             catch (HttpNotFoundException)
             {
                 Program.ProgressLog.Log(Severity.Severe, itemId.ToString(), "Item not found in item bank.");
+                Console.WriteLine("   Item not found!");
             }
             catch (Exception err)
             {
@@ -203,5 +256,49 @@ namespace BuildSmarterContentPackage
             }
         }
 
+        const string c_manifestName = "imsmanifest.xml";
+        const string c_emptyManifest = "<manifest xmlns=\"http://www.imsglobal.org/xsd/apip/apipv1p0/imscp_v1p1\"></manifest>";
+
+        void AddManifest()
+        {
+            var zipEntry = m_zipArchive.CreateEntry(c_manifestName);
+            using (var outStr = zipEntry.Open())
+            {
+                using (var writer = new StreamWriter(outStr))
+                {
+                    writer.Write(c_emptyManifest);
+                }
+            }
+        }
+
+    }
+
+    static class TickFormatter
+    {
+        public static string AsElapsed(uint ticks)
+        {
+            var hours = ticks / (60 * 60 * 1000);
+            var minutes = (ticks / (60 * 1000)) % 60;
+            var seconds = (ticks / 1000) % 60;
+            var tenths = (ticks / 100) % 10;
+            var sb = new System.Text.StringBuilder();
+            bool leading = false;
+            if (hours > 0)
+            {
+                sb.Append(hours.ToString("D", System.Globalization.CultureInfo.InvariantCulture));
+                sb.Append(":");
+                leading = true;
+            }
+            if (minutes > 0 || leading)
+            {
+                sb.Append(minutes.ToString(leading ? "D2" : "D", System.Globalization.CultureInfo.InvariantCulture));
+                sb.Append(":");
+                leading = true;
+            }
+            sb.Append(seconds.ToString(leading ? "D2" : "D", System.Globalization.CultureInfo.InvariantCulture));
+            sb.Append(".");
+            sb.Append(tenths.ToString("D", System.Globalization.CultureInfo.InvariantCulture));
+            return sb.ToString();
+        }
     }
 }

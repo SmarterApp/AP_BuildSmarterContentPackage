@@ -126,7 +126,7 @@ Access Token
                 {
                     // Here's where the real work happens.
                     ProgressLog = new CsvLogger(s_logFilename);
-#if DEBUG
+#if DEBUG && false
                     ProgressLog.Trace = Console.Error;
 #endif
 
@@ -145,8 +145,16 @@ Access Token
                     // Build the package
                     builder.ProducePackage(s_packageFilename);
 
+                    ProgressLog.Log(Severity.Message, string.Empty, "Elapsed time", TickFormatter.AsElapsed(builder.Elapsed));
+                    ProgressLog.Log(Severity.Message, string.Empty, "Items", builder.ItemCount.ToString());
+                    ProgressLog.Log(Severity.Message, string.Empty, "WordLists", builder.WitCount.ToString());
+                    ProgressLog.Log(Severity.Message, string.Empty, "Stimuli", builder.StimCount.ToString());
+                    ProgressLog.Log(Severity.Message, string.Empty, "Tutorials", builder.TutorialCount.ToString());
+                    ProgressLog.Log(Severity.Message, string.Empty, "Errors", ProgressLog.ErrorCount.ToString());
+
                     Console.WriteLine();
                     Console.WriteLine("Package Build Complete.");
+                    Console.WriteLine($"Elapsed:   {TickFormatter.AsElapsed(builder.Elapsed)}");
                     Console.WriteLine($"Items:     {builder.ItemCount}");
                     Console.WriteLine($"WordLists: {builder.WitCount}");
                     Console.WriteLine($"Stimuli:   {builder.StimCount}");
