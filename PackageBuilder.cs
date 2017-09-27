@@ -275,6 +275,9 @@ namespace BuildSmarterContentPackage
 
     static class TickFormatter
     {
+        /// <summary>
+        /// Format millisecond ticks (from Environment.TickCount) into hours, minutes, seconds, tenths.
+        /// </summary>
         public static string AsElapsed(uint ticks)
         {
             var hours = ticks / (60 * 60 * 1000);
