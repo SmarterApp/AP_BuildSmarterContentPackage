@@ -53,23 +53,23 @@ namespace BuildSmarterContentPackage
 
             var result = new List<KeyValuePair<string, string>>();
 
-            // This API is paginated, it may require multiple requests to retrieve all items.
-            int totalExpectedFiles = 0;
-            for (int page=1; true; ++page) // Gitlab numbers pages starting with 1
-            {
-                UriBuilder uri = new UriBuilder(m_baseAddress);
-                uri.Path = string.Concat(c_GitLabApiPath, "projects/", Uri.EscapeDataString(projectId), "/repository/tree");
-                uri.Query = $"recursive=true&page={page}&per_page={c_filesPerPage}";
+            UriBuilder ub = new UriBuilder(m_baseAddress);
+            ub.Path = string.Concat(c_GitLabApiPath, "projects/", Uri.EscapeDataString(projectId), "/repository/tree");
+            ub.Query = $"recursive=true&per_page={c_filesPerPage}";
 
-                var request = HttpPrepareRequest(uri.Uri);
+            // This API is paginated, it may require multiple requests to retrieve all items.
+            Uri uri = ub.Uri;
+            int totalExpectedFiles = 0;
+            int page = 1;   // GitLab numbers pages starting with 1
+            while (uri != null)
+            {
+                System.Diagnostics.Debug.WriteLine(uri.ToString());
+
+                var request = HttpPrepareRequest(uri);
                 using (var response = HttpGetResponseHandleErrors(request))
                 {
                     // Get the total expected files
                     int.TryParse(response.GetResponseHeader("X-Total"), out totalExpectedFiles);
-
-                    // Get the total pages
-                    int totalPages = 0;
-                    int.TryParse(response.GetResponseHeader("X-Total-Pages"), out totalPages);
 
                     // Get the returned page number and check to make sure it was the right one.
                     int pageReturned = 0;
@@ -78,6 +78,10 @@ namespace BuildSmarterContentPackage
                     {
                         throw new ApplicationException($"GitLab returned page {pageReturned} expected {page}");
                     }
+                    ++page;
+
+                    // Get the next page URI (returns null if no more pages)
+                    uri = HttpNextPageUri(response);
 
                     // Retrieve the files
                     var doc = HttpReceiveJson(response);
@@ -85,9 +89,6 @@ namespace BuildSmarterContentPackage
                     {
                         result.Add(new KeyValuePair<string, string>(el.Element("path").Value, el.Element("id").Value));
                     }
-
-                    // Exit if this is the last page
-                    if (page >= totalPages) break;
                 }
             }
 
@@ -166,6 +167,19 @@ namespace BuildSmarterContentPackage
             }
         }
 
+        private Uri HttpNextPageUri(HttpWebResponse response)
+        {
+            var parser = new HttpLinkHeaderParser(response);
+            while (parser.MoveNext())
+            {
+                if ((parser.CurrentParameters["rel"] ?? string.Empty).Equals("next", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new Uri(parser.CurrentUrl);
+                }
+            }
+            return null;
+        }
+
         private static Exception ConvertWebException(WebException ex)
         {
             HttpWebResponse response = null;
@@ -225,5 +239,151 @@ namespace BuildSmarterContentPackage
             : base(message, innerException)
         {
         }
+    }
+
+    /// <summary>
+    /// Parse a link header value according to http://www.rfc-editor.org/rfc/rfc5988.txt
+    /// </summary>
+    class HttpLinkHeaderParser
+    {
+        string m_header;
+        int m_cursor;
+
+        string m_currentUrl;
+        Dictionary<string, string> m_currentParameters = new Dictionary<string, string>();
+
+        public HttpLinkHeaderParser(string linkHeaderValue)
+        {
+            m_header = linkHeaderValue;
+            m_cursor = 0;
+        }
+
+        public HttpLinkHeaderParser(HttpWebResponse response)
+        {
+            m_header = response.GetResponseHeader("Link");
+            m_cursor = 0;
+        }
+
+        public string CurrentUrl
+        {
+            get { return m_currentUrl; }
+        }
+
+        public IReadOnlyDictionary<string, string> CurrentParameters
+        {
+            get { return m_currentParameters; }
+        }
+
+        public bool MoveNext()
+        {
+            m_currentParameters.Clear();
+            int end = m_header.Length;
+            SkipWhiteSpace();
+
+            // URL should be next (enclosed in angle brackets)
+            if (m_cursor >= end || m_header[m_cursor] != '<')
+            {
+                m_cursor = end;
+                return false;
+            }
+            ++m_cursor;
+
+            // Parse the URL
+            m_currentUrl = ParseUntil('>');
+            if (m_cursor < end) ++m_cursor;
+
+            SkipWhiteSpace();
+
+            // Parse parameters
+            while (m_cursor < end && m_header[m_cursor] == ';')
+            {
+                ++m_cursor;
+                SkipWhiteSpace();
+
+                // Parse parameter name
+                string parmName = ParseUntil(s_spaceOrEq);
+                SkipWhiteSpace();
+
+                // Parse parameter value
+                string parmValue = string.Empty;
+                if (m_cursor < end && m_header[m_cursor] == '=')
+                {
+                    ++m_cursor;
+                    SkipWhiteSpace();
+
+                    // Quoted string value
+                    if (m_cursor < end && m_header[m_cursor] == '"')
+                    {
+                        parmValue = ParseQuotedString();
+                    }
+                    else
+                    {
+                        parmValue = ParseUntil(s_spaceCommaOrSemi);
+                    }
+                }
+                m_currentParameters.Add(parmName.ToLower(), parmValue);
+
+                SkipWhiteSpace();
+            }
+
+            // Move to next input (if any)
+            if (m_cursor < end && m_header[m_cursor] == ',')
+            {
+                ++m_cursor;
+            }
+            else
+            {
+                m_cursor = end;
+            }
+
+            return true;
+        }
+
+        private void SkipWhiteSpace()
+        {
+            while (m_cursor < m_header.Length && char.IsWhiteSpace(m_header[m_cursor])) ++m_cursor;
+        }
+
+        private string ParseUntil(char c)
+        {
+            int i = m_header.IndexOf(c, m_cursor);
+            if (i < 0) i = m_header.Length;
+            string value = m_header.Substring(m_cursor, i - m_cursor);
+            m_cursor = i;
+            return value;
+        }
+
+        private string ParseUntil(params char[] anyOf)
+        {
+            int i = m_header.IndexOfAny(anyOf, m_cursor);
+            if (i < 0) i = m_header.Length;
+            string value = m_header.Substring(m_cursor, i - m_cursor);
+            m_cursor = i;
+            return value;
+        }
+
+        static readonly char[] s_spaceOrGt = new char[] { '>', ' ', '\r', '\n', '\t' };
+        static readonly char[] s_spaceOrEq = new char[] { '=', ' ', '\r', '\n', '\t' };
+        static readonly char[] s_spaceCommaOrSemi = new char[] { ',', ';', ' ', '\r', '\n', '\t' };
+
+        private string ParseQuotedString()
+        {
+            if (m_header[m_cursor] != '"') return string.Empty;
+
+            var sb = new StringBuilder();
+            int end = m_header.Length;
+            int i = m_cursor + 1;
+            while (i < end && m_header[i] != '"')
+            {
+                // Handle backslash escaping
+                if (m_header[i] == '\\') ++i;
+                sb.Append(m_header[i]);
+                ++i;
+            }
+            if (i < end) ++i; // Skip closing quote
+            m_cursor = i;
+            return sb.ToString();
+        }
+        
     }
 }
