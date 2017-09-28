@@ -57,13 +57,11 @@ namespace BuildSmarterContentPackage
 
             using (m_zipArchive = ZipFile.Open(packageFilename, ZipArchiveMode.Create))
             {
-                using (m_gitLab = new GitLab(ItemBankUrl, ItemBankAccessToken))
+                m_gitLab = new GitLab(ItemBankUrl, ItemBankAccessToken);
+                while (m_itemQueue.Count > 0)
                 {
-                    while (m_itemQueue.Count > 0)
-                    {
-                        PackageItem(m_itemQueue.Dequeue());
-                        Console.WriteLine($"Completed: {m_itemQueue.CountDequeued} of {m_itemQueue.CountDistinct} items. Elapsed: {TickFormatter.AsElapsed(unchecked((uint)Environment.TickCount - (uint)startTicks))}");
-                    }
+                    PackageItem(m_itemQueue.Dequeue());
+                    Console.WriteLine($"Completed: {m_itemQueue.CountDequeued} of {m_itemQueue.CountDistinct} items. Elapsed: {TickFormatter.AsElapsed(unchecked((uint)Environment.TickCount - (uint)startTicks))}");
                 }
 
                 // Add manifest
