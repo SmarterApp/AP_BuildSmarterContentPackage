@@ -84,25 +84,29 @@ namespace BuildSmarterContentPackage
                 string itemXmlName = itemId.ToString() + ".xml";
                 foreach (var entry in m_gitLab.ListRepositoryTree(projectId))
                 {
-                    Console.WriteLine($"   {entry.Key}");
-                    using (var inStr = m_gitLab.ReadBlob(projectId, entry.Value))
+                    // ignore the "glossary" folder
+                    if (!entry.Key.Equals("glossary"))
                     {
-                        var zipEntry = m_zipArchive.CreateEntry(directoryPath + entry.Key);
-                        using (var outStr = zipEntry.Open())
+                        Console.WriteLine($"   {entry.Key}");
+                        using (var inStr = m_gitLab.ReadBlob(projectId, entry.Value))
                         {
-                            // If this is the item file, save a copy in a memory stream.
-                            if (entry.Key.Equals(itemXmlName, StringComparison.OrdinalIgnoreCase))
+                            var zipEntry = m_zipArchive.CreateEntry(directoryPath + entry.Key);
+                            using (var outStr = zipEntry.Open())
                             {
-                                itemXmlStream = new MemoryStream();
-                                inStr.CopyTo(itemXmlStream);
-                                itemXmlStream.Position = 0;
-                                itemXmlStream.CopyTo(outStr);
-                            }
+                                // If this is the item file, save a copy in a memory stream.
+                                if (entry.Key.Equals(itemXmlName, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    itemXmlStream = new MemoryStream();
+                                    inStr.CopyTo(itemXmlStream);
+                                    itemXmlStream.Position = 0;
+                                    itemXmlStream.CopyTo(outStr);
+                                }
 
-                            // Else, just copy directly
-                            else
-                            {
-                                inStr.CopyTo(outStr);
+                                // Else, just copy directly
+                                else
+                                {
+                                    inStr.CopyTo(outStr);
+                                }
                             }
                         }
                     }
