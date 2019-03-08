@@ -84,8 +84,12 @@ namespace BuildSmarterContentPackage
                 string itemXmlName = itemId.ToString() + ".xml";
                 foreach (var entry in m_gitLab.ListRepositoryTree(projectId))
                 {
-                    // ignore the "glossary" folder
-                    if (!entry.Key.Equals("glossary"))
+
+                    // ignore the "glossary" folder, glossary folder items, item.json, and import.zip files
+                    if (entry.Key != "glossary" &&
+                        !entry.Key.Contains("glossary/") &&
+                        entry.Key != "item.json" &&
+                        entry.Key != "import.zip")
                     {
                         Console.WriteLine($"   {entry.Key}");
                         using (var inStr = m_gitLab.ReadBlob(projectId, entry.Value))
@@ -109,6 +113,10 @@ namespace BuildSmarterContentPackage
                                 }
                             }
                         }
+                    }
+                    else
+                    {
+                        Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Will not add the following object: " + entry.Key, "");
                     }
                 }
 
