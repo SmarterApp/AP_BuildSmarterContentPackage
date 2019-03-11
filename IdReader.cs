@@ -196,8 +196,7 @@ namespace BuildSmarterContentPackage
         /// <returns></returns>
         public override string ToString()
         {
-            //return $"{Class.ToString().ToLowerInvariant()}-{BankKey.ToString()}-{Id.ToString()}";
-            return $"{Id.ToString()}";
+            return $"{Class.ToString().ToLowerInvariant()}-{BankKey.ToString()}-{Id.ToString()}";            
         }
 
         /// <summary>
@@ -206,22 +205,19 @@ namespace BuildSmarterContentPackage
         /// <returns></returns>
         public string ToStringCap()
         {
-            //return $"{Class.ToString()}-{BankKey.ToString()}-{Id.ToString()}";
-            return $"{Id.ToString()}";
+            return $"{Class.ToString()}-{BankKey.ToString()}-{Id.ToString()}";
         }
 
         public override int GetHashCode()
         {
-            //return Class.GetHashCode() ^ BankKey.GetHashCode() ^ Id.GetHashCode();
-            return Id.GetHashCode();
+            return Class.GetHashCode() ^ BankKey.GetHashCode() ^ Id.GetHashCode();
         }
 
         public override bool Equals(object obj)
         {
             var b = obj as ItemId;
             if (b == null) return false;
-            //return Class == b.Class && BankKey == b.BankKey && Id == b.Id;
-            return Id == b.Id;
+            return Class == b.Class && BankKey == b.BankKey && Id == b.Id;
         }
     }
 
