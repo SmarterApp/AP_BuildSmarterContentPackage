@@ -223,8 +223,6 @@ namespace BuildSmarterContentPackage
 
                                 }
                             }
-
-
                         }
                         else
                         {
@@ -232,6 +230,28 @@ namespace BuildSmarterContentPackage
                             if (itemEle != null)
                             {
                                 ++m_stimCount;
+                            }
+
+                            // Find any wordlist references
+                            XElement resourceList = itemEle.Element("resourceslist");
+                            if (resourceList != null)
+                            {
+                                IEnumerable<XElement> witResources =
+                                from resource in resourceList.Elements("resource")
+                                where resource.Attribute("type").Value.Equals("wordList", StringComparison.OrdinalIgnoreCase)
+                                select resource;
+
+                                foreach (var resource in witResources)
+                                {
+                                    var witId = new ItemId(ItemClass.Item,
+                                        int.Parse(resource.Attribute("bankkey").Value),
+                                        int.Parse(resource.Attribute("id").Value));
+                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Item depends on WordList", witId.ToString());
+                                    if (AddId(witId))
+                                    {
+                                        ++witsAdded;
+                                    }
+                                }
                             }
                         }
                     }
