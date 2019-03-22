@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Configuration;
 using System.Collections.Generic;
 using System.IO.Compression;
 using System.IO;
@@ -12,6 +13,7 @@ namespace BuildSmarterContentPackage
         DistinctQueue<ItemId> m_itemQueue = new DistinctQueue<ItemId>();
         GitLab m_gitLab;
         ZipArchive m_zipArchive;
+        PostGresDb imrtDb = new PostGresDb();
 
         // Progress counters
         int m_itemCount;
@@ -75,6 +77,7 @@ namespace BuildSmarterContentPackage
         {
             Console.WriteLine(itemId.ToString());
             MemoryStream itemXmlStream = null;
+            
             try
             {
                 string projectId = m_gitLab.ProjectIdFromName(ItemBankNamespace, itemId.ToString());
@@ -82,35 +85,113 @@ namespace BuildSmarterContentPackage
                 string directoryPath = string.Concat((itemId.Class == ItemClass.Item) ? "Items" : "Stimuli", "/", itemId.ToStringCap(), "/");
 
                 string itemXmlName = itemId.ToString() + ".xml";
+
+                // check if the item is a WIT. If so, put the full WIT item xml into the witXml variable
+                XElement witXml = null;
+                if (itemId.TypeOfItem == ItemType.Wit)
+                {
+                    KeyValuePair<string, string> witXmlFile = m_gitLab.ListRepositoryTree(projectId)
+                                                                        .First(w => w.Key == itemId.Class.ToString().ToLower() + "-" + itemId.BankKey + "-" + itemId.Id + ".xml");
+                    var inStr = m_gitLab.ReadBlob(projectId, witXmlFile.Value);
+                    MemoryStream witXmlStream = new MemoryStream();
+                    inStr.CopyTo(witXmlStream);
+                    witXmlStream.Position = 0;
+                    witXml = XElement.Load(witXmlStream);
+                }
+
                 foreach (var entry in m_gitLab.ListRepositoryTree(projectId))
                 {
-
-                    // ignore the "glossary" folder, glossary folder items, item.json, and import.zip files
+                    // ignore any sub folders (like glossary, general-attachments), glossary folder files, general-attachment folder files, item.json, import.zip, and the old <itemID>.xml files                   
                     if (entry.Key != "glossary" &&
                         !entry.Key.Contains("glossary/") &&
+                        entry.Key != "general-attachments" &&
+                        !entry.Key.Contains("general-attachments/") &&
                         entry.Key != "item.json" &&
-                        entry.Key != "import.zip")
+                        entry.Key != "import.zip" &&
+                        entry.Key != itemId.Id + ".xml")
                     {
                         Console.WriteLine($"   {entry.Key}");
-                        using (var inStr = m_gitLab.ReadBlob(projectId, entry.Value))
-                        {
-                            var zipEntry = m_zipArchive.CreateEntry(directoryPath + entry.Key);
-                            using (var outStr = zipEntry.Open())
-                            {
-                                // If this is the item file, save a copy in a memory stream.
-                                if (entry.Key.Equals(itemXmlName, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    itemXmlStream = new MemoryStream();
-                                    inStr.CopyTo(itemXmlStream);
-                                    itemXmlStream.Position = 0;
-                                    itemXmlStream.CopyTo(outStr);
-                                }
 
-                                // Else, just copy directly
+                        //test here for Items (not WITs, stims, or tutorials)
+                        bool validEntry; // this is the flag used to determine if a file should be added to the content package
+                        if (itemId.TypeOfItem == ItemType.Item) { 
+                            imrtDb.Connect(ConfigurationManager.ConnectionStrings["imrt_connectionString"].ToString());
+                            imrtDb.GetItemAttachments(itemId.Id);
+                            imrtDb.Disconnect();
+
+                            if (entry.Key.Substring(entry.Key.Length - 3) != "xml" &&
+                                entry.Key.Substring(entry.Key.Length - 3) != "qrx" &&
+                                entry.Key.Substring(entry.Key.Length - 3) != "eax" &&
+                                entry.Key.Substring(entry.Key.Length - 3) != "svg" &&
+                                entry.Key.Substring(entry.Key.Length - 3) != "png")
+                            {
+                                Console.WriteLine($"      Checking if {entry.Key} is a valid attachement file");
+                                if (imrtDb.itemAttachments.Where(a => a.FileName == entry.Key).Any())
+                                {
+                                    validEntry = true;
+                                    Console.WriteLine($"      {entry.Key} is a valid attachement file");
+                                }
                                 else
                                 {
-                                    inStr.CopyTo(outStr);
+                                    validEntry = false;
+                                    Console.WriteLine($"      {entry.Key} is NOT a valid attachement file");
+                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Will not add the following object: " + entry.Key, "");
                                 }
+                            }
+                            else
+                            {
+                                validEntry = true;
+                            }
+                        }
+                        else if (itemId.TypeOfItem == ItemType.Wit) // special case for handling WIT items where only the referenced audio files will be set as valid
+                        {
+                            // for each WIT audio file, check to see if it is referenced in the WIT XML by doing a simple string contains check. 
+                            if (entry.Key.Substring(entry.Key.Length - 3) != "xml") // only check the non XML files
+                            {
+                                Console.WriteLine($"      Checking if {entry.Key} is a valid WIT audio or image file");
+                                if (witXml.ToString().Contains(entry.Key.Substring(1, entry.Key.Length - 4)))
+                                {
+                                    validEntry = true;
+                                    Console.WriteLine($"      {entry.Key} is a valid WIT audio or image file");
+                                }
+                                else
+                                {
+                                    validEntry = false;
+                                    Console.WriteLine($"      Checking if {entry.Key} is NOT a valid WIT audio or image file");
+                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Will not add the following object: " + entry.Key, "");
+                                }
+                            }
+                            else
+                            {
+                                validEntry = true;
+                            }
+                        }
+                        else
+                        {
+                            validEntry = true;
+                        }
+
+                        if (validEntry) { 
+                            using (var inStr = m_gitLab.ReadBlob(projectId, entry.Value))
+                            {
+                                var zipEntry = m_zipArchive.CreateEntry(directoryPath + entry.Key);
+                                using (var outStr = zipEntry.Open())
+                                {
+                                    // If this is the item file, save a copy in a memory stream.
+                                    if (entry.Key.Equals(itemXmlName, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        itemXmlStream = new MemoryStream();
+                                        inStr.CopyTo(itemXmlStream);
+                                        itemXmlStream.Position = 0;
+                                        itemXmlStream.CopyTo(outStr);
+                                    }
+
+                                    // Else, just copy directly as long as it is a valid attachment file
+                                    else
+                                    {
+                                        inStr.CopyTo(outStr);
+                                    }
+                                }                       
                             }
                         }
                     }
@@ -175,7 +256,8 @@ namespace BuildSmarterContentPackage
                                 {
                                     var witId = new ItemId(ItemClass.Item,
                                         int.Parse(resource.Attribute("bankkey").Value),
-                                        int.Parse(resource.Attribute("id").Value));
+                                        int.Parse(resource.Attribute("id").Value),
+                                        ItemType.Wit);
                                     Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Item depends on WordList", witId.ToString());
                                     if (AddId(witId))
                                     {
@@ -214,7 +296,8 @@ namespace BuildSmarterContentPackage
                                 {
                                     var tutId = new ItemId(ItemClass.Item,
                                         int.Parse(tutorial.Attribute("bankkey").Value),
-                                        int.Parse(tutorial.Attribute("id").Value));
+                                        int.Parse(tutorial.Attribute("id").Value),
+                                        ItemType.Tut);
                                     Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Item depends on tutorial", tutId.ToString());
                                     if (AddId(tutId))
                                     {
@@ -245,7 +328,8 @@ namespace BuildSmarterContentPackage
                                 {
                                     var witId = new ItemId(ItemClass.Item,
                                         int.Parse(resource.Attribute("bankkey").Value),
-                                        int.Parse(resource.Attribute("id").Value));
+                                        int.Parse(resource.Attribute("id").Value),
+                                        ItemType.Wit);
                                     Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Item depends on WordList", witId.ToString());
                                     if (AddId(witId))
                                     {

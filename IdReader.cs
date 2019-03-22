@@ -127,17 +127,24 @@ namespace BuildSmarterContentPackage
         Item,
         Stim
     }
-
+    enum  ItemType
+    {
+        Item,
+        Wit,
+        Tut
+    }
     class ItemId
     {
-        public ItemId(ItemClass itemClass, int bankKey, int id)
+        public ItemId(ItemClass itemClass, int bankKey, int id, ItemType itemType = ItemType.Item)
         {
             Class = itemClass;
             BankKey = bankKey;
             Id = id;
+            TypeOfItem = itemType;
         }
 
         public ItemClass Class;
+        public ItemType TypeOfItem;
         public int BankKey;
         public int Id;
 
