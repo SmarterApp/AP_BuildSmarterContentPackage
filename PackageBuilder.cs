@@ -14,6 +14,7 @@ namespace BuildSmarterContentPackage
         GitLab m_gitLab;
         ZipArchive m_zipArchive;
         PostGresDb imrtDb = new PostGresDb();
+        ManifestBuilder manifestBuilder = new ManifestBuilder();
 
         // Progress counters
         int m_itemCount;
@@ -23,11 +24,8 @@ namespace BuildSmarterContentPackage
         uint m_elapsed;
 
         public string ItemBankUrl { get; set; }
-
         public string ItemBankAccessToken { get; set; }
-
         public string ItemBankNamespace { get; set; }
-
         public bool IncludeTutorials { get; set; }
 
         /// <summary>
@@ -56,9 +54,9 @@ namespace BuildSmarterContentPackage
             m_witCount = 0;
             m_tutorialCount = 0;
             int startTicks = Environment.TickCount;
-
+            
             using (m_zipArchive = ZipFile.Open(packageFilename, ZipArchiveMode.Create))
-            {
+            {                
                 m_gitLab = new GitLab(ItemBankUrl, ItemBankAccessToken);
                 while (m_itemQueue.Count > 0)
                 {
@@ -67,7 +65,9 @@ namespace BuildSmarterContentPackage
                 }
 
                 // Add manifest
-                AddManifest();
+                Console.WriteLine($"Writing package manifest.");
+                manifestBuilder.BuildContent();
+                AddManifest(manifestBuilder.Content);
             }
 
             m_elapsed = unchecked((uint)Environment.TickCount - (uint)startTicks);
@@ -77,6 +77,7 @@ namespace BuildSmarterContentPackage
         {
             Console.WriteLine(itemId.ToString());
             MemoryStream itemXmlStream = null;
+            Item parentItem = new Item();
             
             try
             {
@@ -86,18 +87,26 @@ namespace BuildSmarterContentPackage
 
                 string itemXmlName = itemId.ToString() + ".xml";
 
-                // check if the item is a WIT. If so, put the full WIT item xml into the witXml variable
-                XElement witXml = null;
-                if (itemId.TypeOfItem == ItemType.Wit)
-                {
-                    KeyValuePair<string, string> witXmlFile = m_gitLab.ListRepositoryTree(projectId)
-                                                                        .First(w => w.Key == itemId.Class.ToString().ToLower() + "-" + itemId.BankKey + "-" + itemId.Id + ".xml");
-                    var inStr = m_gitLab.ReadBlob(projectId, witXmlFile.Value);
-                    MemoryStream witXmlStream = new MemoryStream();
-                    inStr.CopyTo(witXmlStream);
-                    witXmlStream.Position = 0;
-                    witXml = XElement.Load(witXmlStream);
-                }
+                // There is a need to not include files that are not referenced in the XML content. This is seperate from files that are referenced in the IMRT
+                // item attachments table. Place the XML content into a variable for inspection further down.
+                XElement contentXml = null;
+                KeyValuePair<string, string> contentXmlFile = m_gitLab.ListRepositoryTree(projectId)
+                                                                      .First(w => w.Key == itemId.Class.ToString().ToLower() + "-" + itemId.BankKey + "-" + itemId.Id + ".xml");
+                var contentStr = m_gitLab.ReadBlob(projectId, contentXmlFile.Value);
+                MemoryStream contentXmlStream = new MemoryStream();
+                contentStr.CopyTo(contentXmlStream);
+                contentXmlStream.Position = 0;
+                contentXml = XElement.Load(contentXmlStream);
+
+                // prepare the parent Item object for the manifest
+                parentItem.Identifier = itemId.Class.ToString().ToLower() + "-" + itemId.BankKey + "-" + itemId.Id;
+                parentItem.Type = itemId.Class == ItemClass.Item ? Item.ResourceType.Item : Item.ResourceType.Stim;
+                parentItem.Folder = "Items/" + itemId.Class.ToString() + "-" + itemId.BankKey + "-" + itemId.Id + "/";
+                parentItem.Href = parentItem.Folder + itemId.Class.ToString().ToLower() + "-" + itemId.BankKey + "-" + itemId.Id + ".xml";
+                parentItem.IsADependency = false;
+                
+                // add the stim, wit, and tutorial object
+
 
                 foreach (var entry in m_gitLab.ListRepositoryTree(projectId))
                 {
@@ -112,8 +121,9 @@ namespace BuildSmarterContentPackage
                     {
                         Console.WriteLine($"   {entry.Key}");
 
-                        //test here for Items (not WITs, stims, or tutorials)
                         bool validEntry; // this is the flag used to determine if a file should be added to the content package
+                        
+                        //test here for Items, Stims, and Tutorials -- not WITs
                         if (itemId.TypeOfItem == ItemType.Item) { 
                             imrtDb.Connect(ConfigurationManager.ConnectionStrings["imrt_connectionString"].ToString());
                             imrtDb.GetItemAttachments(itemId.Id);
@@ -121,20 +131,24 @@ namespace BuildSmarterContentPackage
 
                             if (entry.Key.Substring(entry.Key.Length - 3) != "xml" &&
                                 entry.Key.Substring(entry.Key.Length - 3) != "qrx" &&
-                                entry.Key.Substring(entry.Key.Length - 3) != "eax" &&
-                                entry.Key.Substring(entry.Key.Length - 3) != "svg" &&
-                                entry.Key.Substring(entry.Key.Length - 3) != "png")
+                                entry.Key.Substring(entry.Key.Length - 3) != "eax")
                             {
-                                Console.WriteLine($"      Checking if {entry.Key} is a valid attachement file");
+                                Console.WriteLine($"      Checking if {entry.Key} is a valid attachment file");
                                 if (imrtDb.itemAttachments.Where(a => a.FileName == entry.Key).Any())
                                 {
                                     validEntry = true;
-                                    Console.WriteLine($"      {entry.Key} is a valid attachement file");
+                                    Console.WriteLine($"      {entry.Key} is a valid attachment file");
+                                }
+                                else if (contentXml.ToString().Contains(entry.Key))
+                                {
+                                    // check the content. there may be imbedded references to files not in the attachments table.
+                                    validEntry = true;
+                                    Console.WriteLine($"      {entry.Key} is a valid file referenced in the stem content");
                                 }
                                 else
                                 {
                                     validEntry = false;
-                                    Console.WriteLine($"      {entry.Key} is NOT a valid attachement file");
+                                    Console.WriteLine($"      {entry.Key} is NOT a valid attachment file");
                                     Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Will not add the following object: " + entry.Key, "");
                                 }
                             }
@@ -149,7 +163,7 @@ namespace BuildSmarterContentPackage
                             if (entry.Key.Substring(entry.Key.Length - 3) != "xml") // only check the non XML files
                             {
                                 Console.WriteLine($"      Checking if {entry.Key} is a valid WIT audio or image file");
-                                if (witXml.ToString().Contains(entry.Key.Substring(1, entry.Key.Length - 4)))
+                                if (contentXml.ToString().Contains(entry.Key.Substring(1, entry.Key.Length - 4))) // check the audio file, independent of the audio file extension.
                                 {
                                     validEntry = true;
                                     Console.WriteLine($"      {entry.Key} is a valid WIT audio or image file");
@@ -171,6 +185,8 @@ namespace BuildSmarterContentPackage
                             validEntry = true;
                         }
 
+                        // TODO: somewhere in this if...else block, the manifest content is built based on validEntry. 
+                        // need to use the entry.Key value
                         if (validEntry) { 
                             using (var inStr = m_gitLab.ReadBlob(projectId, entry.Value))
                             {
@@ -181,17 +197,46 @@ namespace BuildSmarterContentPackage
                                     if (entry.Key.Equals(itemXmlName, StringComparison.OrdinalIgnoreCase))
                                     {
                                         itemXmlStream = new MemoryStream();
-                                        inStr.CopyTo(itemXmlStream);
+                                        inStr.CopyTo(itemXmlStream); // this saves the stream to a temporary memory stream for later use 
                                         itemXmlStream.Position = 0;
-                                        itemXmlStream.CopyTo(outStr);
+                                        itemXmlStream.CopyTo(outStr); // this saves the stream to the zip file
                                     }
 
                                     // Else, just copy directly as long as it is a valid attachment file
                                     else
                                     {
-                                        inStr.CopyTo(outStr);
+                                        inStr.CopyTo(outStr); // this saves the stream to the zip file
                                     }
-                                }                       
+                                }
+
+                                //place into the manifest. this will need to be an item added to the manifestBuilder.Items (or stim added to the manifestBuilder.Stims)
+                                //need to determine a couple of things: 
+                                //  1. determine the object. if not metadata, then a dependency, which belongs as an asset type or stim
+                                //  2. need to determine the stim, wit, and tutorial dependencies, if any. investigate the contentXml variable
+                                //  3. handle metadata on it's own because the file is always called metadata
+                                if (entry.Key != "metadata.xml" &&
+                                    !entry.Key.Equals(itemXmlName, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    Item assetItem = new Item();
+                                    assetItem.Identifier = entry.Key.Replace('.', '_'); // replace the "dot" file extension as an "underscore" file extension
+                                    assetItem.Type = Item.ResourceType.AllOtherAssets;
+                                    assetItem.Folder = parentItem.Folder;
+                                    assetItem.Href = parentItem.Folder + entry.Key;
+                                    assetItem.IsADependency = true;
+
+                                    parentItem.DependentAssets.Add(assetItem);
+                                }
+                                else if (entry.Key == "metadata.xml")
+                                {
+                                    Item metadataItem = new Item();
+                                    metadataItem.Identifier = parentItem.Identifier + "_metadata";
+                                    metadataItem.Type = Item.ResourceType.Metadata;
+                                    metadataItem.Folder = parentItem.Folder;
+                                    metadataItem.Href = parentItem.Folder + "metadata.xml";
+                                    metadataItem.IsADependency = true;
+
+                                    parentItem.DependentMetadata = metadataItem;
+                                }
                             }
                         }
                     }
@@ -263,6 +308,16 @@ namespace BuildSmarterContentPackage
                                     {
                                         ++witsAdded;
                                     }
+
+                                    // add the wit item for the manifest
+                                    Item witItem = new Item();
+                                    witItem.Identifier = ItemClass.Item.ToString().ToLower() + "-" + resource.Attribute("bankkey").Value + "-" + resource.Attribute("id").Value;
+                                    witItem.Type = Item.ResourceType.Item;
+                                    witItem.Folder = "Items/" + ItemClass.Item.ToString() + "-" + resource.Attribute("bankkey").Value + "-" + resource.Attribute("id").Value;
+                                    witItem.Href = parentItem.Folder + witItem.Identifier + ".xml";
+                                    witItem.IsADependency = true;
+
+                                    parentItem.DependentWit = witItem;
                                 }
                             }
 
@@ -285,6 +340,16 @@ namespace BuildSmarterContentPackage
                                     {
                                         ++stimsAdded;
                                     }
+
+                                    // add the stim item for the manifest
+                                    Item stimItem = new Item();
+                                    stimItem.Identifier = ItemClass.Stim.ToString().ToLower() + "-" + bankKey + "-" + attrib.Element("val").Value;
+                                    stimItem.Type = Item.ResourceType.Stim;
+                                    stimItem.Folder = "Stimuli/" + ItemClass.Stim.ToString() + "-" + bankKey + "-" + attrib.Element("val").Value;
+                                    stimItem.Href = stimItem.Folder + stimItem.Identifier + ".xml";
+                                    stimItem.IsADependency = true;
+
+                                    parentItem.DependentStim = stimItem;
                                 }
                             }
 
@@ -304,6 +369,15 @@ namespace BuildSmarterContentPackage
                                         ++tutorialsAdded;
                                     }
 
+                                    // add the tutorial item for the manifest
+                                    Item tutItem = new Item();
+                                    tutItem.Identifier = ItemClass.Item.ToString().ToLower() + "-" + tutorial.Attribute("bankkey").Value + "-" + tutorial.Attribute("id").Value;
+                                    tutItem.Type = Item.ResourceType.Item;
+                                    tutItem.Folder = "Items/" + ItemClass.Item.ToString() + "-" + tutorial.Attribute("bankkey").Value + "-" + tutorial.Attribute("id").Value;
+                                    tutItem.Href = parentItem.Folder + tutItem.Identifier + ".xml";
+                                    tutItem.IsADependency = true;
+
+                                    parentItem.DependentTut = tutItem;
                                 }
                             }
                         }
@@ -335,6 +409,16 @@ namespace BuildSmarterContentPackage
                                     {
                                         ++witsAdded;
                                     }
+
+                                    // add the wit item for the manifest
+                                    Item witItem = new Item();
+                                    witItem.Identifier = ItemClass.Item.ToString().ToLower() + "-" + resource.Attribute("bankkey").Value + "-" + resource.Attribute("id").Value;
+                                    witItem.Type = Item.ResourceType.Item;
+                                    witItem.Folder = "Items/" + ItemClass.Item.ToString() + "-" + resource.Attribute("bankkey").Value + "-" + resource.Attribute("id").Value;
+                                    witItem.Href = parentItem.Folder + witItem.Identifier + ".xml";
+                                    witItem.IsADependency = true;
+
+                                    parentItem.DependentWit = witItem;
                                 }
                             }
                         }
@@ -343,6 +427,16 @@ namespace BuildSmarterContentPackage
                     {
                         throw new ApplicationException("Expected content missing from item xml.", err);
                     }
+                }
+
+                // add the parent item to the main manifest builder list of items or stims
+                if (parentItem.Type == Item.ResourceType.Item)
+                {
+                    manifestBuilder.Items.Add(parentItem);
+                }
+                else if (parentItem.Type == Item.ResourceType.Stim)
+                {
+                    manifestBuilder.Stims.Add(parentItem);
                 }
 
                 var sb = new System.Text.StringBuilder("  ");
@@ -371,16 +465,16 @@ namespace BuildSmarterContentPackage
         }
 
         const string c_manifestName = "imsmanifest.xml";
-        const string c_emptyManifest = "<manifest xmlns=\"http://www.imsglobal.org/xsd/apip/apipv1p0/imscp_v1p1\"></manifest>";
+        //const string c_emptyManifest = "<manifest xmlns=\"http://www.imsglobal.org/xsd/apip/apipv1p0/imscp_v1p1\"></manifest>";
 
-        void AddManifest()
+        void AddManifest(string manifestBody)
         {
             var zipEntry = m_zipArchive.CreateEntry(c_manifestName);
             using (var outStr = zipEntry.Open())
             {
                 using (var writer = new StreamWriter(outStr))
                 {
-                    writer.Write(c_emptyManifest);
+                    writer.Write(manifestBody);
                 }
             }
         }
