@@ -63,10 +63,6 @@ namespace BuildSmarterContentPackage
                         output += "<file href=\"" + currentDependency.Href + "\"/></resource>";
                     }
                 }
-                else
-                {
-                    output += "</resource>";
-                }
             }
 
             foreach(Item currentStim in Stims)
