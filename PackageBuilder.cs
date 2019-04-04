@@ -98,16 +98,34 @@ namespace BuildSmarterContentPackage
                 contentXmlStream.Position = 0;
                 contentXml = XElement.Load(contentXmlStream);
 
+                // check if there is a RendererSpec element with a filename attribute value. This will be the GAX file, which will need to be inspected for any referenced image files
+                XElement rendererSpecXml = null;
+                if (itemId.Class == ItemClass.Item) { 
+                    XElement contentXmlItemElement = contentXml.Element("item");
+                    XElement rendererSpecElement = contentXmlItemElement.Element("RendererSpec");
+                    if (rendererSpecElement != null)
+                    {
+                        var rendererSpecFileName = rendererSpecElement.Attribute("filename").Value.ToString().Substring(2); // the filename may include 2 leading forward slashes
+                        Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "RendererSpec filename: " + rendererSpecFileName, "");
+
+                        KeyValuePair<string, string> rendererSpecFile = m_gitLab.ListRepositoryTree(projectId)
+                                                                                .First(w => w.Key == rendererSpecFileName);
+                        var rendererSpecStr = m_gitLab.ReadBlob(projectId, rendererSpecFile.Value);
+                        MemoryStream rendererSpecXmlStream = new MemoryStream();
+                        rendererSpecStr.CopyTo(rendererSpecXmlStream);
+                        rendererSpecXmlStream.Position = 0;                    
+                        rendererSpecXml = XElement.Load(rendererSpecXmlStream);
+                    }
+                }
+
                 // prepare the parent Item object for the manifest
                 parentItem.Identifier = itemId.Class.ToString().ToLower() + "-" + itemId.BankKey + "-" + itemId.Id;
                 parentItem.Type = itemId.Class == ItemClass.Item ? Item.ResourceType.Item : Item.ResourceType.Stim;
-                parentItem.Folder = "Items/" + itemId.Class.ToString() + "-" + itemId.BankKey + "-" + itemId.Id + "/";
+                parentItem.Folder = itemId.Class == ItemClass.Item ? "Items/" + itemId.Class.ToString() + "-" + itemId.BankKey + "-" + itemId.Id + "/" 
+                                                                   : "Stimuli/" + itemId.Class.ToString().ToLower() + "-" + itemId.BankKey + "-" + itemId.Id + "/";
                 parentItem.Href = parentItem.Folder + itemId.Class.ToString().ToLower() + "-" + itemId.BankKey + "-" + itemId.Id + ".xml";
                 parentItem.IsADependency = false;
                 
-                // add the stim, wit, and tutorial object
-
-
                 foreach (var entry in m_gitLab.ListRepositoryTree(projectId))
                 {
                     // ignore any sub folders (like glossary, general-attachments), glossary folder files, general-attachment folder files, item.json, import.zip, and the old <itemID>.xml files                   
@@ -121,35 +139,51 @@ namespace BuildSmarterContentPackage
                     {
                         Console.WriteLine($"   {entry.Key}");
 
-                        bool validEntry; // this is the flag used to determine if a file should be added to the content package
+                        bool validEntry = false; // this is the flag used to determine if a file should be added to the content package
                         
                         //test here for Items, Stims, and Tutorials -- not WITs
-                        if (itemId.TypeOfItem == ItemType.Item) { 
+                        if (itemId.TypeOfItem == ItemType.Item ||
+                            itemId.TypeOfItem == ItemType.Tut) { 
                             imrtDb.Connect(ConfigurationManager.ConnectionStrings["imrt_connectionString"].ToString());
                             imrtDb.GetItemAttachments(itemId.Id);
                             imrtDb.Disconnect();
 
                             if (entry.Key.Substring(entry.Key.Length - 3) != "xml" &&
                                 entry.Key.Substring(entry.Key.Length - 3) != "qrx" &&
-                                entry.Key.Substring(entry.Key.Length - 3) != "eax")
+                                entry.Key.Substring(entry.Key.Length - 3) != "eax" &&
+                                entry.Key.Substring(entry.Key.Length - 3) != "gax")
                             {
                                 Console.WriteLine($"      Checking if {entry.Key} is a valid attachment file");
                                 if (imrtDb.itemAttachments.Where(a => a.FileName == entry.Key).Any())
                                 {
                                     validEntry = true;
                                     Console.WriteLine($"      {entry.Key} is a valid attachment file");
+                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), entry.Key + " is a valid attachment file.", "");
                                 }
-                                else if (contentXml.ToString().Contains(entry.Key))
+                                else if (contentXml.ToString().Contains(entry.Key) ||
+                                         contentXml.ToString().Contains(entry.Key.Substring(1, entry.Key.Length - 4)))
                                 {
-                                    // check the content. there may be imbedded references to files not in the attachments table.
+                                    // check the content. there may be imbedded references to files not in the attachments table. 
+                                    // this includes the case of alternate audio files, independent of the file extension
                                     validEntry = true;
                                     Console.WriteLine($"      {entry.Key} is a valid file referenced in the stem content");
+                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), entry.Key + " is a valid file referenced in the stem content.", "");
+                                }
+                                else if (rendererSpecXml != null) {
+                                    if (rendererSpecXml.ToString().Contains(entry.Key))
+                                    {
+                                        // check the GAX content. there may be imbedded referensed to files not in the item content file.
+                                        validEntry = true;
+                                        Console.WriteLine($"      {entry.Key} is a valid file referenced in the GAX content");
+                                        Program.ProgressLog.Log(Severity.Message, itemId.ToString(), entry.Key + " is a valid file referenced in the GAX content.", "");
+                                    }                                
                                 }
                                 else
                                 {
                                     validEntry = false;
-                                    Console.WriteLine($"      {entry.Key} is NOT a valid attachment file");
-                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Will not add the following object: " + entry.Key, "");
+                                    Console.WriteLine($"      {entry.Key} is NOT a valid attachment file, or a file referenced in the stem or GAX content.");
+                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Will not add the following object: " + entry.Key + 
+                                                                                                 ". The file is NOT a valid attachment file, or a file referenced in the stem or GAX content", "");
                                 }
                             }
                             else
@@ -167,6 +201,7 @@ namespace BuildSmarterContentPackage
                                 {
                                     validEntry = true;
                                     Console.WriteLine($"      {entry.Key} is a valid WIT audio or image file");
+                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), entry.Key + " is a valid WIT audio or image file.", "");
                                 }
                                 else
                                 {
@@ -185,8 +220,6 @@ namespace BuildSmarterContentPackage
                             validEntry = true;
                         }
 
-                        // TODO: somewhere in this if...else block, the manifest content is built based on validEntry. 
-                        // need to use the entry.Key value
                         if (validEntry) { 
                             using (var inStr = m_gitLab.ReadBlob(projectId, entry.Value))
                             {

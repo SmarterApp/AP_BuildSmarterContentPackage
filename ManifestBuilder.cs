@@ -77,7 +77,10 @@ namespace BuildSmarterContentPackage
                         output += "<dependency identifierref=\"" + currentDependency.Identifier + "\"/>";
                     }
                 }
-                output += "</resource>";
+                output += "<dependency identifierref=\"" + currentStim.DependentMetadata.Identifier + "\"/></resource>";
+
+                output += "<resource identifier=\"" + currentStim.DependentMetadata.Identifier + "\" type=\"" + currentStim.DependentMetadata.ResourceTypeVersion() + "\">";
+                output += "<file href=\"" + currentStim.DependentMetadata.Href + "\"/></resource>";
 
                 if (currentStim.DependentAssets.Count > 0)
                 {
