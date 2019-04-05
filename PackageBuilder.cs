@@ -105,7 +105,14 @@ namespace BuildSmarterContentPackage
                     XElement rendererSpecElement = contentXmlItemElement.Element("RendererSpec");
                     if (rendererSpecElement != null)
                     {
-                        var rendererSpecFileName = rendererSpecElement.Attribute("filename").Value.ToString().Substring(2); // the filename may include 2 leading forward slashes
+                        var rendererSpecFileName = rendererSpecElement.Attribute("filename").Value.ToString(); 
+                        
+                        // the filename may include 2 leading forward slashes
+                        if (rendererSpecFileName.Substring(0, 2).Equals("//"))
+                        {
+                            rendererSpecFileName = rendererSpecFileName.Substring(2);
+                        }
+
                         Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "RendererSpec filename: " + rendererSpecFileName, "");
 
                         KeyValuePair<string, string> rendererSpecFile = m_gitLab.ListRepositoryTree(projectId)
