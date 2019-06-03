@@ -83,7 +83,8 @@ namespace BuildSmarterContentPackage
             {
                 string projectId = m_gitLab.ProjectIdFromName(ItemBankNamespace, itemId.ToString());
 
-                string directoryPath = string.Concat((itemId.Class == ItemClass.Item) ? "Items" : "Stimuli", "/", itemId.ToStringCap(), "/");
+                //string directoryPath = string.Concat((itemId.Class == ItemClass.Item) ? "Items" : "Stimuli", "/", itemId.ToStringCap(), "/");
+                string directoryPath = (itemId.Class == ItemClass.Item) ? "Items" + "/" + itemId.ToStringCap() + "/" : "Stimuli" + "/" + itemId + "/";
 
                 string itemXmlName = itemId.ToString() + ".xml";
 
@@ -200,20 +201,20 @@ namespace BuildSmarterContentPackage
                         }
                         else if (itemId.TypeOfItem == ItemType.Wit) // special case for handling WIT items where only the referenced audio files will be set as valid
                         {
-                            // for each WIT audio file, check to see if it is referenced in the WIT XML by doing a simple string contains check. 
+                            // for each WIT audio file (independent of the file extension), check to see if it is referenced in the WIT XML by doing a simple string contains check. 
                             if (entry.Key.Substring(entry.Key.Length - 3) != "xml") // only check the non XML files
                             {
-                                Console.WriteLine($"      Checking if {entry.Key} is a valid WIT audio or image file");
+                                Console.WriteLine($"      Checking if {entry.Key} is a valid referenced WIT audio or image file");
                                 if (contentXml.ToString().Contains(entry.Key.Substring(1, entry.Key.Length - 4))) // check the audio file, independent of the audio file extension.
                                 {
                                     validEntry = true;
-                                    Console.WriteLine($"      {entry.Key} is a valid WIT audio or image file");
-                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), entry.Key + " is a valid WIT audio or image file.", "");
+                                    Console.WriteLine($"      {entry.Key} is a valid referenced WIT audio or image file");
+                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), entry.Key + " is a valid WIT audio or image file.", "");                                    
                                 }
                                 else
                                 {
                                     validEntry = false;
-                                    Console.WriteLine($"      Checking if {entry.Key} is NOT a valid WIT audio or image file");
+                                    Console.WriteLine($"      Checking if {entry.Key} is NOT a valid referenced WIT audio or image file");
                                     Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Will not add the following object: " + entry.Key, "");
                                 }
                             }
@@ -361,36 +362,31 @@ namespace BuildSmarterContentPackage
                                 }
                             }
 
-                            // Find any stimulus references
-                            XElement attribList = itemEle.Element("attriblist");
-                            if (attribList != null)
-                            {
-                                IEnumerable<XElement> stimAttributes =
-                                from attrib in attribList.Elements("attrib")
-                                where attrib.Attribute("attid").Value.Equals("stm_pass_id", StringComparison.OrdinalIgnoreCase)
-                                select attrib;
+                            // Find any stimulus references. 
+                            // Prior to 5/28/2019, the Stim id could be found in two locations: in the <attriblist> elements and the <associatedpassage> element.
+                            // After 5/28/2019, the attriblist element <attrib  attid="stm_pass_id"> contains the ITS ID, which is appropriate as the attrib name value is "Stim: ITS ID".
+                            // Only the <associatedpassage> element contains the TIMS ID for the stim. Not all items have an <associatedpassage> element, so check for a null XElement object.
 
-                                foreach (var attrib in stimAttributes)
+                            XElement stimulusElement = itemEle.Element("associatedpassage");
+                            if (stimulusElement != null) { 
+                                var stimId = new ItemId(ItemClass.Stim,
+                                            bankKey,
+                                            int.Parse(stimulusElement.Value));
+                                Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Item depends on stimulus", stimId.ToString());
+                                if (AddId(stimId))
                                 {
-                                    var stimId = new ItemId(ItemClass.Stim,
-                                        bankKey,
-                                        int.Parse(attrib.Element("val").Value));
-                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Item depends on stimulus", stimId.ToString());
-                                    if (AddId(stimId))
-                                    {
-                                        ++stimsAdded;
-                                    }
-
-                                    // add the stim item for the manifest
-                                    Item stimItem = new Item();
-                                    stimItem.Identifier = ItemClass.Stim.ToString().ToLower() + "-" + bankKey + "-" + attrib.Element("val").Value;
-                                    stimItem.Type = Item.ResourceType.Stim;
-                                    stimItem.Folder = "Stimuli/" + ItemClass.Stim.ToString() + "-" + bankKey + "-" + attrib.Element("val").Value;
-                                    stimItem.Href = stimItem.Folder + stimItem.Identifier + ".xml";
-                                    stimItem.IsADependency = true;
-
-                                    parentItem.DependentStim = stimItem;
+                                    ++stimsAdded;
                                 }
+
+                                // add the stim item for the manifest
+                                Item stimItem = new Item();
+                                stimItem.Identifier = ItemClass.Stim.ToString().ToLower() + "-" + bankKey + "-" + stimId.Id;
+                                stimItem.Type = Item.ResourceType.Stim;
+                                stimItem.Folder = "Stimuli/" + ItemClass.Stim.ToString().ToLower() + "-" + bankKey + "-" + stimId.Id;
+                                stimItem.Href = stimItem.Folder + stimItem.Identifier + ".xml";
+                                stimItem.IsADependency = true;
+
+                                parentItem.DependentStim = stimItem;
                             }
 
                             // Find any tutorial references
