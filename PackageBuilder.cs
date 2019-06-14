@@ -15,6 +15,7 @@ namespace BuildSmarterContentPackage
         ZipArchive m_zipArchive;
         PostGresDb imrtDb = new PostGresDb();
         ManifestBuilder manifestBuilder = new ManifestBuilder();
+        bool recodeOgg = false;
 
         // Progress counters
         int m_itemCount;
@@ -27,6 +28,7 @@ namespace BuildSmarterContentPackage
         public string ItemBankAccessToken { get; set; }
         public string ItemBankNamespace { get; set; }
         public bool IncludeTutorials { get; set; }
+        public string PackageFileName { get; set; }
 
         /// <summary>
         /// Elapsed time in milliseconds
@@ -54,6 +56,7 @@ namespace BuildSmarterContentPackage
             m_witCount = 0;
             m_tutorialCount = 0;
             int startTicks = Environment.TickCount;
+            PackageFileName = packageFilename;
             
             using (m_zipArchive = ZipFile.Open(packageFilename, ZipArchiveMode.Create))
             {                
@@ -68,6 +71,26 @@ namespace BuildSmarterContentPackage
                 Console.WriteLine($"Writing package manifest.");
                 manifestBuilder.BuildContent();
                 AddManifest(manifestBuilder.Content);
+            }
+
+            if (recodeOgg) { 
+                // once package has been built, unzip, and delete the zipped file
+                Console.WriteLine($"Audio files have been found that need to be recoded as valid Ogg files. Preparing for that process...");
+                ZipFile.ExtractToDirectory(packageFilename, packageFilename.Substring(0, packageFilename.Length - 4));
+                System.IO.File.Delete(packageFilename);
+
+                Console.WriteLine($"Starting the Ogg recode process.");
+                // run the ogg reencoder
+                var process = System.Diagnostics.Process.Start(Path.GetDirectoryName(packageFilename) + "\\RecodeOgg.exe", packageFilename.Substring(0, packageFilename.Length - 4));
+                process.WaitForExit();
+
+                Console.WriteLine($"Preforming directory clean up after Ogg recode.");
+                // once audio files have been re-encoded, zip up contents
+                ZipFile.CreateFromDirectory(packageFilename.Substring(0, packageFilename.Length - 4), packageFilename);
+
+                // delete the unzipped directory
+                System.IO.Directory.Delete(packageFilename.Substring(0, packageFilename.Length - 4), true);
+                Console.WriteLine($"Audio file Ogg recode process complete.");
             }
 
             m_elapsed = unchecked((uint)Environment.TickCount - (uint)startTicks);
@@ -201,12 +224,76 @@ namespace BuildSmarterContentPackage
                         }
                         else if (itemId.TypeOfItem == ItemType.Wit) // special case for handling WIT items where only the referenced audio files will be set as valid
                         {
-                            // for each WIT audio file (independent of the file extension), check to see if it is referenced in the WIT XML by doing a simple string contains check. 
+                            // for each WIT audio file (independent of the file extension), check to see if it is referenced in the WIT XML by doing a simple string.Contains check. 
                             if (entry.Key.Substring(entry.Key.Length - 3) != "xml") // only check the non XML files
                             {
                                 Console.WriteLine($"      Checking if {entry.Key} is a valid referenced WIT audio or image file");
                                 if (contentXml.ToString().Contains(entry.Key.Substring(1, entry.Key.Length - 4))) // check the audio file, independent of the audio file extension.
                                 {
+                                    // The audio file is a valid audio file.
+                                    // Before the audio file can be tagged as a valid entry, a check of the encoding of the file must be done.
+                                    // During the 2017-2018 content QC, it was discovered that .m4a files were named .ogg which caused problems with certain browsers.
+                                    // A fix was found to re-encode the file to the expected file type. The same file check is done here. Additionally, the re-encoded audio file
+                                    // will be saved in a seperate directory for replacement in the item bank.
+                                    if (entry.Key.Substring(entry.Key.Length - 3, 3).Equals("ogg") ||
+                                        entry.Key.Substring(entry.Key.Length - 3, 3).Equals("m4a"))
+                                    {
+                                        Int32 header0;
+                                        Int32 header4;
+                                        const Int32 c_oggHeader = 0x5367674f;   // OggS in hex
+                                        const Int32 c_m4aHeader = 0x70797466;   // ftyp in hex
+
+                                        var audioFileStr = m_gitLab.ReadBlob(projectId, entry.Value);
+                                        MemoryStream audioMemoryStream = new MemoryStream();
+                                        audioFileStr.CopyTo(audioMemoryStream);
+                                        audioMemoryStream.Position = 0;
+
+                                        using (var file = new BinaryReader(audioMemoryStream))
+                                        {
+                                            header0 = file.ReadInt32();
+                                            header4 = file.ReadInt32();
+
+                                            string foundFormat = (header0 == c_oggHeader) ? "ogg" : ((header4 == c_m4aHeader) ? "m4a" : "unknown");
+
+                                            if (!string.Equals(entry.Key.Substring(entry.Key.Length - 3, 3), foundFormat, StringComparison.Ordinal))
+                                            {
+                                                recodeOgg = true;
+                                    //            Console.WriteLine($"      {entry.Key} encoding does not match the file extension.");
+                                    //            // The encoding type does not match the file extension. 
+                                    //            // The re-encoder requires the file to be on the file system. The operations will be
+                                    //            //  1. save the bad encoded file into a directory
+                                    //            //  2. run the ffmpeg.exe encoder on the saved file. Information about ffmpeg.exe found here: https://ffmpeg.org/
+                                    //            //      syntax: ffmpeg -i currentfilename.extension currentfilename.ogg OR currentfilename.m4a, depending on which file format is needed
+                                    //            //  3. put the file name into an array for later processing
+                                    //            //  4. during the processing of the file into the zip file, compare file names with what is contained in the array. if a match, use the re-encoded filecopy the new file to another directory for safe keeping
+                                    //            // step 1
+                                    //            if (!System.IO.Directory.Exists(Path.GetDirectoryName(PackageFileName) + "\\FilesWithAudioFix"))
+                                    //            {
+                                    //                System.IO.Directory.CreateDirectory(Path.GetDirectoryName(PackageFileName) + "\\FilesWithAudioFix");
+                                    //            }
+                                    //            using (FileStream writeStream = File.OpenWrite(Path.GetDirectoryName(PackageFileName) + "\\FilesWithAudioFix\\" + entry.Key))
+                                    //            {
+                                    //                BinaryWriter writer = new BinaryWriter(writeStream);
+                                    //                byte[] buffer = new byte[1024];
+                                    //                int bytesRead;
+
+                                    //                while((bytesRead = audioMemoryStream.Read(buffer, 0, 1024)) > 0)
+                                    //                {
+                                    //                    writeStream.Write(buffer, 0, bytesRead);
+                                    //                }                                                    
+                                    //            }
+                                    //            // step 2
+                                    //            //string changeToFormat = foundFormat == "ogg" ? "m4a" : "ogg";
+                                    //            //var process = System.Diagnostics.Process.Start("C:\\SmarterBalanced\\content-packaging\\app\\audio-encoding\\ffmpeg.exe", "-i " + 
+                                    //            //    Path.GetDirectoryName(PackageFileName) + "\\FilesWithAudioFix\\" + entry.Key + " " +
+                                    //            //    Path.GetDirectoryName(PackageFileName) + "\\FilesWithAudioFix\\" + entry.Key.Substring(entry.Key.Length - 3, 3) + changeToFormat);
+                                    //            //var process = System.Diagnostics.Process.Start("D:\\GitHub\\AP_BuildSmarterContentPackage\\ffmpeg.exe", "-i " +
+                                    //            //    Path.GetDirectoryName(PackageFileName) + "\\FilesWithAudioFix\\" + entry.Key + " -hide_banner -loglevel error -codec:a libvorbis -b:a 48k -f ogg " +
+                                    //            //    Path.GetDirectoryName(PackageFileName) + "\\FilesWithAudioFix\\" + entry.Key);
+
+                                            }
+                                        }
+                                    }
                                     validEntry = true;
                                     Console.WriteLine($"      {entry.Key} is a valid referenced WIT audio or image file");
                                     Program.ProgressLog.Log(Severity.Message, itemId.ToString(), entry.Key + " is a valid WIT audio or image file.", "");                                    
