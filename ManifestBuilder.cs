@@ -42,7 +42,11 @@ namespace BuildSmarterContentPackage
                         }
                     }
                 }
-                
+
+                if (currentItem.DependentWit != null)
+                {
+                    output += "<dependency identifierref=\"" + currentItem.DependentWit.Identifier + "\"/>";
+                }
                 if (currentItem.DependentTut != null)
                 {
                     output += "<dependency identifierref=\"" + currentItem.DependentTut.Identifier + "\"/>";
@@ -70,6 +74,10 @@ namespace BuildSmarterContentPackage
                 output += "<resource identifier=\"" + currentStim.Identifier + "\" type=\"" + currentStim.ResourceTypeVersion() + "\">";
                 output += "<file href=\"" + currentStim.Href + "\"/>";
 
+                if (currentStim.DependentWit != null)
+                {
+                    output += "<dependency identifierref=\"" + currentStim.DependentWit.Identifier + "\"/>";
+                }
                 if (currentStim.DependentAssets.Count > 0)
                 {
                     foreach (Item currentDependency in currentStim.DependentAssets)

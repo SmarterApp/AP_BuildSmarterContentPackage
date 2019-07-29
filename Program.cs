@@ -59,6 +59,7 @@ Arguments:
                           exiting. This is convenient when executing from a
                           debugger or icon to allow the user to read the
                           output.
+    -iz                   Include the import.zip file. Default is to not include.
 
 Item ID File:
     The Item ID file specified by the '-ids' argument is a list of IDs for
@@ -109,6 +110,7 @@ Access Token
         static string s_namespace = c_DefaultNamespace;
         static int s_bankKey = c_DefaultBankKey;
         static bool s_includeTutorials = true;
+        static bool s_includeImportZip = false;
         static bool s_waitBeforeExit = false;
 
         static void Main(string[] args)
@@ -134,6 +136,7 @@ Access Token
                     builder.ItemBankAccessToken = s_accessToken;
                     builder.ItemBankNamespace = s_namespace;
                     builder.IncludeTutorials = s_includeTutorials;
+                    builder.IncludeImportZip = s_includeImportZip;
                     
                     // Load the queue with the inbound item IDs
                     using (var reader = new IdReader(s_idFilename, s_bankKey))
@@ -252,6 +255,10 @@ Access Token
                         s_includeTutorials = false;
                         break;
 
+                    case "-iz":
+                        s_includeImportZip = true;
+                        break;
+
                     case "-w":
                         s_waitBeforeExit = true;
                         break;
@@ -299,6 +306,7 @@ Access Token
             Console.WriteLine($"Namespace: {s_namespace}");
             Console.WriteLine($"Default Bank Key: {s_bankKey}");
             Console.WriteLine("Auto Include Tutorials: {0}", s_includeTutorials ? "Yes" : "No");
+            Console.WriteLine("Include import.zip: {0}", s_includeImportZip ? "Yes" : "No");
             Console.WriteLine();
         }
     }

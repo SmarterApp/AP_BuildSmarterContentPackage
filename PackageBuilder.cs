@@ -29,6 +29,7 @@ namespace BuildSmarterContentPackage
         public string ItemBankNamespace { get; set; }
         public bool IncludeTutorials { get; set; }
         public string PackageFileName { get; set; }
+        public bool IncludeImportZip { get; set; }
 
         /// <summary>
         /// Elapsed time in milliseconds
@@ -72,8 +73,8 @@ namespace BuildSmarterContentPackage
                 manifestBuilder.BuildContent();
                 AddManifest(manifestBuilder.Content);
             }
-
-            if (recodeOgg) { 
+            
+            if (recodeOgg) {
                 // once package has been built, unzip, and delete the zipped file
                 Console.WriteLine($"Audio files have been found that need to be recoded as valid Ogg files. Preparing for that process...");
                 ZipFile.ExtractToDirectory(packageFilename, packageFilename.Substring(0, packageFilename.Length - 4));
@@ -81,7 +82,7 @@ namespace BuildSmarterContentPackage
 
                 Console.WriteLine($"Starting the Ogg recode process.");
                 // run the ogg reencoder
-                var process = System.Diagnostics.Process.Start(Path.GetDirectoryName(packageFilename) + "\\RecodeOgg.exe", packageFilename.Substring(0, packageFilename.Length - 4));
+                var process = System.Diagnostics.Process.Start(ConfigurationManager.AppSettings["audioEncodePath"], packageFilename.Substring(0, packageFilename.Length - 4));
                 process.WaitForExit();
 
                 Console.WriteLine($"Preforming directory clean up after Ogg recode.");
@@ -203,11 +204,16 @@ namespace BuildSmarterContentPackage
                                 else if (rendererSpecXml != null) {
                                     if (rendererSpecXml.ToString().Contains(entry.Key))
                                     {
-                                        // check the GAX content. there may be imbedded referensed to files not in the item content file.
+                                        // check the GAX content. there may be imbedded references to files not in the item content file.
                                         validEntry = true;
                                         Console.WriteLine($"      {entry.Key} is a valid file referenced in the GAX content");
                                         Program.ProgressLog.Log(Severity.Message, itemId.ToString(), entry.Key + " is a valid file referenced in the GAX content.", "");
                                     }                                
+                                }
+                                else if (entry.Key == "import.zip" && IncludeImportZip)
+                                {
+                                    validEntry = true;
+                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Adding the import.zip file.", "");
                                 }
                                 else
                                 {
@@ -527,7 +533,7 @@ namespace BuildSmarterContentPackage
                                         int.Parse(resource.Attribute("bankkey").Value),
                                         int.Parse(resource.Attribute("id").Value),
                                         ItemType.Wit);
-                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Item depends on WordList", witId.ToString());
+                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Stim depends on WordList", witId.ToString());
                                     if (AddId(witId))
                                     {
                                         ++witsAdded;
