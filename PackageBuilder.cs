@@ -166,7 +166,7 @@ namespace BuildSmarterContentPackage
                         entry.Key != "general-attachments" &&
                         !entry.Key.Contains("general-attachments/") &&
                         entry.Key != "item.json" &&
-                        entry.Key != "import.zip" &&
+                        //entry.Key != "import.zip" &&
                         entry.Key != itemId.Id + ".xml")
                     {
                         Console.WriteLine($"   {entry.Key}");
