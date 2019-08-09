@@ -265,49 +265,51 @@ Access Token
                 }
             }
 
-            if (string.IsNullOrEmpty(s_idFilename))
-            {
-                throw new ArgumentException("Command Line Error: Missing '-ids' argument.");
-            }
-            s_idFilename = Path.GetFullPath(s_idFilename);
-            if (!File.Exists(s_idFilename))
-            {
-                throw new ArgumentException($"Command Line Error: ID file '{s_idFilename}' not found! (-ids argument)");
-            }
+            if (!s_showHelp) { 
+                if (string.IsNullOrEmpty(s_idFilename))
+                {
+                    throw new ArgumentException("Command Line Error: Missing '-ids' argument.");
+                }
+                s_idFilename = Path.GetFullPath(s_idFilename);
+                if (!File.Exists(s_idFilename))
+                {
+                    throw new ArgumentException($"Command Line Error: ID file '{s_idFilename}' not found! (-ids argument)");
+                }
 
-            if (string.IsNullOrEmpty(s_accessToken))
-            {
-                throw new ArgumentException("Command Line Error: Missing '-at' argument.");
-            }
+                if (string.IsNullOrEmpty(s_accessToken))
+                {
+                    throw new ArgumentException("Command Line Error: Missing '-at' argument.");
+                }
 
-            if (string.IsNullOrEmpty(s_packageFilename))
-            {
-                throw new ArgumentException("Command Line Error: Missing '-o' argument.");
-            }
-            s_packageFilename = Path.GetFullPath(s_packageFilename);
-            if (File.Exists(s_packageFilename))
-            {
-                File.Delete(s_packageFilename);
-            }
+                if (string.IsNullOrEmpty(s_packageFilename))
+                {
+                    throw new ArgumentException("Command Line Error: Missing '-o' argument.");
+                }
+                s_packageFilename = Path.GetFullPath(s_packageFilename);
+                if (File.Exists(s_packageFilename))
+                {
+                    File.Delete(s_packageFilename);
+                }
 
-            if (string.IsNullOrEmpty(s_logFilename))
-            {
-                s_logFilename = Path.Combine(Path.GetDirectoryName(s_packageFilename), Path.GetFileNameWithoutExtension(s_packageFilename) + ".log.csv");
-            }
-            if (File.Exists(s_logFilename))
-            {
-                File.Delete(s_logFilename);
-            }
+                if (string.IsNullOrEmpty(s_logFilename))
+                {
+                    s_logFilename = Path.Combine(Path.GetDirectoryName(s_packageFilename), Path.GetFileNameWithoutExtension(s_packageFilename) + ".log.csv");
+                }
+                if (File.Exists(s_logFilename))
+                {
+                    File.Delete(s_logFilename);
+                }
 
-            Console.WriteLine($"ID File (input): {s_idFilename}");
-            Console.WriteLine($"Package File (output): {s_packageFilename}");
-            Console.WriteLine($"Log File (output): {s_logFilename}");
-            Console.WriteLine($"Item Bank URL: {s_itemBankUrl}");
-            Console.WriteLine($"Namespace: {s_namespace}");
-            Console.WriteLine($"Default Bank Key: {s_bankKey}");
-            Console.WriteLine("Auto Include Tutorials: {0}", s_includeTutorials ? "Yes" : "No");
-            Console.WriteLine("Include import.zip: {0}", s_includeImportZip ? "Yes" : "No");
-            Console.WriteLine();
+                Console.WriteLine($"ID File (input): {s_idFilename}");
+                Console.WriteLine($"Package File (output): {s_packageFilename}");
+                Console.WriteLine($"Log File (output): {s_logFilename}");
+                Console.WriteLine($"Item Bank URL: {s_itemBankUrl}");
+                Console.WriteLine($"Namespace: {s_namespace}");
+                Console.WriteLine($"Default Bank Key: {s_bankKey}");
+                Console.WriteLine("Auto Include Tutorials: {0}", s_includeTutorials ? "Yes" : "No");
+                Console.WriteLine("Include import.zip: {0}", s_includeImportZip ? "Yes" : "No");
+                Console.WriteLine();
+            }
         }
     }
 }
