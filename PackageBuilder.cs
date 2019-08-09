@@ -185,7 +185,7 @@ namespace BuildSmarterContentPackage
                                 entry.Key.Substring(entry.Key.Length - 3) != "eax" &&
                                 entry.Key.Substring(entry.Key.Length - 3) != "gax")
                             {
-                                Console.WriteLine($"      Checking if {entry.Key} is a valid attachment file");
+                                Console.WriteLine($"      Checking if {entry.Key} is a valid attachment file");                                
                                 if (imrtDb.itemAttachments.Where(a => a.FileName == entry.Key).Any())
                                 {
                                     validEntry = true;
@@ -201,6 +201,12 @@ namespace BuildSmarterContentPackage
                                     Console.WriteLine($"      {entry.Key} is a valid file referenced in the stem content");
                                     Program.ProgressLog.Log(Severity.Message, itemId.ToString(), entry.Key + " is a valid file referenced in the stem content.", "");
                                 }
+                                else if (entry.Key == "import.zip" && IncludeImportZip)
+                                {
+                                    validEntry = true;
+                                    Console.WriteLine($"      {entry.Key} is not a valid attachment file, however the file has been set to be included in the content package.");
+                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Adding the import.zip file.", "");
+                                }
                                 else if (rendererSpecXml != null) {
                                     if (rendererSpecXml.ToString().Contains(entry.Key))
                                     {
@@ -208,13 +214,15 @@ namespace BuildSmarterContentPackage
                                         validEntry = true;
                                         Console.WriteLine($"      {entry.Key} is a valid file referenced in the GAX content");
                                         Program.ProgressLog.Log(Severity.Message, itemId.ToString(), entry.Key + " is a valid file referenced in the GAX content.", "");
+                                    }
+                                    else
+                                    {
+                                        validEntry = false;
+                                        Console.WriteLine($"      {entry.Key} is NOT a valid attachment file, or a file referenced in the stem or GAX content.");
+                                        Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Will not add the following object: " + entry.Key +
+                                                                                                     ". The file is NOT a valid attachment file, or a file referenced in the stem or GAX content", "");
                                     }                                
-                                }
-                                else if (entry.Key == "import.zip" && IncludeImportZip)
-                                {
-                                    validEntry = true;
-                                    Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Adding the import.zip file.", "");
-                                }
+                                }                                
                                 else
                                 {
                                     validEntry = false;
