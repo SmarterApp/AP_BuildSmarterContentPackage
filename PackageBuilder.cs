@@ -112,8 +112,9 @@ namespace BuildSmarterContentPackage
 
                 string itemXmlName = itemId.ToString() + ".xml";
 
-                // There is a need to not include files that are not referenced in the XML content. This is seperate from files that are referenced in the IMRT
-                // item attachments table. Place the XML content into a variable for inspection further down.
+                // There is a need to exclude files that are not referenced in the XML content. 
+                // This is seperate from files that are referenced in the IMRT item attachments table. 
+                // Place the XML content into a variable for inspection further down.
                 XElement contentXml = null;
                 KeyValuePair<string, string> contentXmlFile = m_gitLab.ListRepositoryTree(projectId)
                                                                       .First(w => w.Key == itemId.Class.ToString().ToLower() + "-" + itemId.BankKey + "-" + itemId.Id + ".xml");
@@ -123,7 +124,8 @@ namespace BuildSmarterContentPackage
                 contentXmlStream.Position = 0;
                 contentXml = XElement.Load(contentXmlStream);
 
-                // check if there is a RendererSpec element with a filename attribute value. This will be the GAX file, which will need to be inspected for any referenced image files
+                // Check if there is a RendererSpec element with a filename attribute value. This will be the GAX file, which will need to be inspected for any referenced image files
+                // For stacked spanish, specific Spanish image files should be included. The files are not referenced explicitly in the GAX, rather they are the same name with a _ESN suffix
                 XElement rendererSpecXml = null;
                 if (itemId.Class == ItemClass.Item) { 
                     XElement contentXmlItemElement = contentXml.Element("item");
@@ -208,12 +210,22 @@ namespace BuildSmarterContentPackage
                                     Program.ProgressLog.Log(Severity.Message, itemId.ToString(), "Adding the import.zip file.", "");
                                 }
                                 else if (rendererSpecXml != null) {
-                                    if (rendererSpecXml.ToString().Contains(entry.Key))
+                                    // the entry.Key may be the stacked spanish image. The file name would match what is in the GAX file without the _ESN suffix in the file name
+                                    string imageFileName = entry.Key;
+                                    if (imageFileName.Contains("_ESN") ||
+                                        imageFileName.Contains("_esn"))
+                                    {
+                                        imageFileName = imageFileName.Replace("_ESN", "");
+                                        imageFileName = imageFileName.Replace("_esn", "");
+                                    }
+                                    if (rendererSpecXml.ToString().Contains(imageFileName.ToLower()) ||
+                                        rendererSpecXml.ToString().Contains(imageFileName)) 
                                     {
                                         // check the GAX content. there may be imbedded references to files not in the item content file.
                                         validEntry = true;
-                                        Console.WriteLine($"      {entry.Key} is a valid file referenced in the GAX content");
-                                        Program.ProgressLog.Log(Severity.Message, itemId.ToString(), entry.Key + " is a valid file referenced in the GAX content.", "");
+                                        Console.WriteLine($"      {entry.Key} is a valid file referenced in the GAX content. If the file name includes _ESN, this is the stacked spanish version of the image and will be included.");
+                                        Program.ProgressLog.Log(Severity.Message, itemId.ToString(), entry.Key + " is a valid file referenced in the GAX content. " +
+                                                                                                     "If the file name includes _ESN, this is the stacked spanish version of the image and will be included.", "");
                                     }
                                     else
                                     {
