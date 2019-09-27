@@ -218,8 +218,7 @@ namespace BuildSmarterContentPackage
                                         imageFileName = imageFileName.Replace("_ESN", "");
                                         imageFileName = imageFileName.Replace("_esn", "");
                                     }
-                                    if (rendererSpecXml.ToString().Contains(imageFileName.ToLower()) ||
-                                        rendererSpecXml.ToString().Contains(imageFileName)) 
+                                    if (rendererSpecXml.ToString().IndexOf(imageFileName, StringComparison.OrdinalIgnoreCase) >= 0)
                                     {
                                         // check the GAX content. there may be imbedded references to files not in the item content file.
                                         validEntry = true;
