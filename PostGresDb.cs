@@ -45,7 +45,7 @@ namespace BuildSmarterContentPackage
             using (var cmd = new NpgsqlCommand())
             {
                 cmd.Connection = conn;
-                cmd.CommandText = "SELECT i.id as item_id, ia.file_name " +
+                cmd.CommandText = "SELECT i.id as item_id, ia.file_name, ia.file_type " +
                                   "FROM item_attachment as ia " +
                                   "LEFT JOIN item as i " +
                                   "ON i.key = ia.item_key " +
@@ -61,6 +61,7 @@ namespace BuildSmarterContentPackage
                             // go through the result set and populate attachment objects into a list
                             ItemAttachment currentAttachment = new ItemAttachment();
                             currentAttachment.FileName = reader.GetString(1);
+                            currentAttachment.FileType = reader.GetString(2);
                             itemAttachments.Add(currentAttachment);
                         }
                         Message = "Item " + itemId + " has " + itemAttachments.Count + " file attachments.";

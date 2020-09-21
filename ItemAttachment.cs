@@ -8,6 +8,7 @@ namespace BuildSmarterContentPackage
 {
     public class ItemAttachment
     {
-        public string FileName { get; set; }        
+        public string FileName { get; set;}                
+        public string FileType { get; set; } // File types: cc, braille, asl
     }
 }

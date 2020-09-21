@@ -122,18 +122,18 @@ namespace BuildSmarterContentPackage
         }
     }
 
-    enum ItemClass
+    public enum ItemClass
     {
         Item,
         Stim
     }
-    enum  ItemType
+    public enum  ItemType
     {
         Item,
         Wit,
         Tut
     }
-    class ItemId
+    public class ItemId
     {
         public ItemId(ItemClass itemClass, int bankKey, int id, ItemType itemType = ItemType.Item)
         {
