@@ -13,6 +13,7 @@ or implied. See the License for the specific language governing
 permissions and limitations under the License.
 */
 
+
 using System;
 using System.IO;
 
@@ -59,7 +60,18 @@ Arguments:
                           exiting. This is convenient when executing from a
                           debugger or icon to allow the user to read the
                           output.
-    -iz                   Include the import.zip file. Default is to not include.
+    -iz                   (Optional) Include the import.zip file. 
+                          Default is to not include.
+    -wit                  (Optional) Include the WIT audio file renaming.
+                          This process checks WIT audio file names against a 
+                          specific pattern, and renames the files according 
+                          to the same specific pattern. The updated audio file
+                          name is then updated in the WIT XML file.
+                          Default is to not run this process.
+    -noman                Do not automatically include the manifest file. Without this
+                          flag, the packager will automatically include in the
+                          package the manifest file. If this flag is passed, the
+                          packager will include an empty manifest file.
 
 Item ID File:
     The Item ID file specified by the '-ids' argument is a list of IDs for
@@ -112,6 +124,8 @@ Access Token
         static bool s_includeTutorials = true;
         static bool s_includeImportZip = false;
         static bool s_waitBeforeExit = false;
+        static bool s_includeWitFileRenaming = false;
+        static bool s_includeManifest = true;
 
         static void Main(string[] args)
         {
@@ -137,6 +151,8 @@ Access Token
                     builder.ItemBankNamespace = s_namespace;
                     builder.IncludeTutorials = s_includeTutorials;
                     builder.IncludeImportZip = s_includeImportZip;
+                    builder.IncludeWitFileRenaming = s_includeWitFileRenaming;
+                    builder.IncludeManifest = s_includeManifest;
                     
                     // Load the queue with the inbound item IDs
                     using (var reader = new IdReader(s_idFilename, s_bankKey))
@@ -187,6 +203,7 @@ Access Token
                 Console.WriteLine();
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine("Press any key to exit.");
+                Console.ForegroundColor = ConsoleColor.White;
                 Console.ReadKey();
             }
         }
@@ -259,8 +276,16 @@ Access Token
                         s_includeImportZip = true;
                         break;
 
+                    case "-wit":
+                        s_includeWitFileRenaming = true;
+                        break;
+
                     case "-w":
                         s_waitBeforeExit = true;
+                        break;
+
+                    case "-noman":
+                        s_includeManifest = false;
                         break;
                 }
             }
@@ -308,6 +333,8 @@ Access Token
                 Console.WriteLine($"Default Bank Key: {s_bankKey}");
                 Console.WriteLine("Auto Include Tutorials: {0}", s_includeTutorials ? "Yes" : "No");
                 Console.WriteLine("Include import.zip: {0}", s_includeImportZip ? "Yes" : "No");
+                Console.WriteLine("Include WIT audio file renaming: {0}", s_includeWitFileRenaming ? "Yes" : "No");
+                Console.WriteLine("Auto Include full Manifest: {0}", s_includeManifest ? "Yes" : "No");
                 Console.WriteLine();
             }
         }
