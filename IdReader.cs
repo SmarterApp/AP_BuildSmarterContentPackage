@@ -131,7 +131,8 @@ namespace BuildSmarterContentPackage
     {
         Item,
         Wit,
-        Tut
+        Tut,
+        NA
     }
     public class ItemId
     {

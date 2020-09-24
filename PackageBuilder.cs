@@ -45,6 +45,7 @@ namespace BuildSmarterContentPackage
         public bool IncludeImportZip { get; set; }
         public bool IncludeWitFileRenaming { get; set; }
         public bool IncludeManifest { get; set; }
+        public string DownloadFilesOfType { get; set; }
 
         /// <summary>
         /// Elapsed time in milliseconds
@@ -148,7 +149,8 @@ namespace BuildSmarterContentPackage
                 contentXml = XElement.Load(contentXmlStream);
 
                 // Check if there is a RendererSpec element with a filename attribute value. This will be the GAX file, which will need to be inspected for any referenced image files
-                // For stacked spanish, specific Spanish image files should be included. The files are not referenced explicitly in the GAX, rather they are the same name with a _ESN suffix
+                // For stacked spanish, specific Spanish image files should be included. 
+                // The files are not referenced explicitly in the GAX, rather they are the same name with a _ESN suffix
                 XElement rendererSpecXml = null;
                 if (itemId.Class == ItemClass.Item) { 
                     XElement contentXmlItemElement = contentXml.Element("item");
@@ -187,7 +189,7 @@ namespace BuildSmarterContentPackage
                 {
                     WitFileNames currentWitFileNames = new WitFileNames();
 
-                    // ignore any sub folders (like glossary, general-attachments), glossary folder files, general-attachment folder files, item.json, import.zip, and the old <itemID>.xml files                   
+                    // ignore any sub folders (like glossary, general-attachments), glossary folder files, general-attachment folder files, item.json, and the old <itemID>.xml files                   
                     if (entry.Key != "glossary" &&
                         !entry.Key.Contains("glossary/") &&
                         entry.Key != "general-attachments" &&
@@ -200,9 +202,26 @@ namespace BuildSmarterContentPackage
 
                         bool validEntry = false; // this is the flag used to determine if a file should be added to the content package
 
+                        // Check if the DownloadFilesOfType property is null and if the current file extension matches the user-supplied file extension
+                        if (DownloadFilesOfType != null &&
+                            entry.Key.IndexOf("." + DownloadFilesOfType, StringComparison.OrdinalIgnoreCase) > 0)
+                        {
+                            validEntry = true;
+                            itemId.TypeOfItem = ItemType.NA;
+                        }
+                        else if(DownloadFilesOfType != null)
+                        {
+                            itemId.TypeOfItem = ItemType.NA;
+                        }
+                        else
+                        {
+                            validEntry = false;
+                        }
+
                         //test here for Items, Stims (ItemType is "Item"), and Tutorials -- not WITs
-                        if (itemId.TypeOfItem == ItemType.Item ||
-                            itemId.TypeOfItem == ItemType.Tut)
+                        if ((itemId.TypeOfItem == ItemType.Item ||
+                             itemId.TypeOfItem == ItemType.Tut) &&
+                             itemId.TypeOfItem != ItemType.NA)
                         {
 
                             imrtDb.Connect(ConfigurationManager.ConnectionStrings["imrt_connectionString"].ToString());
@@ -512,8 +531,8 @@ namespace BuildSmarterContentPackage
                                 validEntry = true;
                             }
                         }
-                        else
-                        {
+                        else if (itemId.TypeOfItem != ItemType.NA)
+                        {                            
                             validEntry = true;
                         }
 
@@ -533,8 +552,9 @@ namespace BuildSmarterContentPackage
 
                                 // ignore the item file
                                 if (!entry.Key.Equals(itemXmlName, StringComparison.OrdinalIgnoreCase)) 
-                                { 
-                                    var zipEntry = m_zipArchive.CreateEntry(directoryPath + fileName);
+                                {
+                                    var zipEntry = m_zipArchive.CreateEntry(directoryPath + fileName);  // this is where the file is actually added to the zip archive
+
                                     using (var outStr = zipEntry.Open())
                                     {
                                         // If this is the item file, save a copy in a memory stream.
