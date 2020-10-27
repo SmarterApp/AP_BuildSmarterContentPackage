@@ -68,6 +68,8 @@ Arguments:
                           to the same specific pattern. The updated audio file
                           name is then updated in the WIT XML file.
                           Default is to not run this process.
+    -ft <extension>       (Optional) Download file(s) of a particular file extension type,
+                          passed in as a parameter
     -noman                Do not automatically include the manifest file. Without this
                           flag, the packager will automatically include in the
                           package the manifest file. If this flag is passed, the
@@ -126,6 +128,7 @@ Access Token
         static bool s_waitBeforeExit = false;
         static bool s_includeWitFileRenaming = false;
         static bool s_includeManifest = true;
+        static string s_fileExtension = null;
 
         static void Main(string[] args)
         {
@@ -153,6 +156,7 @@ Access Token
                     builder.IncludeImportZip = s_includeImportZip;
                     builder.IncludeWitFileRenaming = s_includeWitFileRenaming;
                     builder.IncludeManifest = s_includeManifest;
+                    builder.DownloadFilesOfType = s_fileExtension;
                     
                     // Load the queue with the inbound item IDs
                     using (var reader = new IdReader(s_idFilename, s_bankKey))
@@ -268,6 +272,12 @@ Access Token
                         }
                         break;
 
+                    case "-ft":
+                        ++i;
+                        if (i >= args.Length) throw new ArgumentException("Command line error: Value not supplied for '-ft' argument.");
+                        s_fileExtension = args[i];
+                        break;
+
                     case "-notut":
                         s_includeTutorials = false;
                         break;
@@ -335,6 +345,7 @@ Access Token
                 Console.WriteLine("Include import.zip: {0}", s_includeImportZip ? "Yes" : "No");
                 Console.WriteLine("Include WIT audio file renaming: {0}", s_includeWitFileRenaming ? "Yes" : "No");
                 Console.WriteLine("Auto Include full Manifest: {0}", s_includeManifest ? "Yes" : "No");
+                Console.WriteLine("Download files of type: {0}", (s_fileExtension != null) ? s_fileExtension.ToUpper() : "NA");
                 Console.WriteLine();
             }
         }
